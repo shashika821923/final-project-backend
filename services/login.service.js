@@ -84,6 +84,22 @@ exports.getAllUsersList = async () => {
     }
 }
 
+
+exports.getAllEmails = async () => {
+    try {
+        await sql.connect(dbconfig.GYM);
+
+        const query = 'SELECT email FROM users WHERE isActive=1 AND isDeleted=0';
+
+        const result = await sql.query(query);
+
+        return result.recordset; // Assuming you want to return the users as an array
+    } catch (error) {
+        console.error('Error:', error.message);
+        throw error; // Rethrow the error to handle it at a higher level
+    }
+}
+
 exports.getUserByUserId = async (userID) => {
     try {
         // Connect to the database

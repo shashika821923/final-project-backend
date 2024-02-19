@@ -15,10 +15,15 @@ app.use(bodyParser.raw({inflate: true, limit: '500mb', type: 'message/rfc822' })
 const loginRoutes = require('./routes/loginRoutes');
 const appointmentsRoutes = require('./routes/appointmentRoutes');
 const blogRoutes = require('./routes/bloggingRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
+const promotionRoutes = require('./routes/promotionsRoutes');
+
 // Define a route
 app.use('/users', loginRoutes);
 app.use('/appointments', appointmentsRoutes);
 app.use('/blogging', blogRoutes);
+app.use('/attendance', attendanceRoutes);
+app.use('/promotions', promotionRoutes);
 
 // Start the server
 app.listen(port, () => {

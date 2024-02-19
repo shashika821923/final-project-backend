@@ -33,10 +33,10 @@ exports.getAllAppointments = async (req, res) => {
     await sql.connect(dbconfig.GYM);
 
     let query = req.body.status == '1' ? (`SELECT A.appointmentId, A.userId, A.date, A.time, A.isDeleted, A.isApproved, A.isCompleted, U.firstName, U.secondName FROM [lords-gym].[dbo].[appointments] AS A
-    JOIN [lords-gym].[dbo].[users] AS U ON A.userId = U.userId where A.isApproved = 1`) : (req.body.status == '2' ?
+    JOIN [lords-gym].[dbo].[users] AS U ON A.userId = U.userId where A.isApproved = 1 AND A.isDeleted = 0 AND A.isCompleted = 0`) : (req.body.status == '2' ?
     (`SELECT A.appointmentId, A.userId, A.date, A.time, A.isDeleted, A.isApproved, A.isCompleted, U.firstName, U.secondName FROM [lords-gym].[dbo].[appointments] AS A
-    JOIN [lords-gym].[dbo].[users] AS U ON A.userId = U.userId where A.isApproved = 0 and A.isDeleted = 0 and A.isCompleted = 0`): req.body.status == '2' ? (`SELECT A.appointmentId, A.userId, A.date, A.time, A.isDeleted, A.isApproved, A.isCompleted, U.firstName, U.secondName FROM [lords-gym].[dbo].[appointments] AS A
-    JOIN [lords-gym].[dbo].[users] AS U ON A.userId = U.userId where A.isApproved = 0 and A.isDeleted = 0 and A.isCompleted = 1`) : (`SELECT A.appointmentId, A.userId, A.date, A.time, A.isDeleted, A.isApproved, A.isCompleted, U.firstName, U.secondName FROM [lords-gym].[dbo].[appointments] AS A
+    JOIN [lords-gym].[dbo].[users] AS U ON A.userId = U.userId where A.isApproved = 0 and A.isDeleted = 0 and A.isCompleted = 0`): req.body.status == '3' ? (`SELECT A.appointmentId, A.userId, A.date, A.time, A.isDeleted, A.isApproved, A.isCompleted, U.firstName, U.secondName FROM [lords-gym].[dbo].[appointments] AS A
+    JOIN [lords-gym].[dbo].[users] AS U ON A.userId = U.userId where A.isApproved = 1 and A.isDeleted = 0 and A.isCompleted = 1`) : (`SELECT A.appointmentId, A.userId, A.date, A.time, A.isDeleted, A.isApproved, A.isCompleted, U.firstName, U.secondName FROM [lords-gym].[dbo].[appointments] AS A
     JOIN [lords-gym].[dbo].[users] AS U ON A.userId = U.userId where A.isDeleted = 1`))
 
     const result = await sql.query(query);
@@ -96,12 +96,31 @@ exports.completeAppointment = async (req, res) => {
   try {
     await sql.connect(dbconfig.GYM);
 
+    // Fetch appointment details from the appointments table
+    const appointmentDetails = await sql.query(`
+      SELECT [userId], CONVERT(VARCHAR(10), [date], 120) AS [date], CONVERT(VARCHAR(8), [time], 108) AS [time]
+      FROM [appointments]
+      WHERE [appointmentId] = ${req.body.appointmentId}
+    `);
+
+    if (appointmentDetails.recordset.length === 0) {
+      throw new Error('Appointment not found');
+    }
+
+    const { userId, date, time } = appointmentDetails.recordset[0];
+
     // Update the appointment record in the database
     const result = await sql.query(`
       UPDATE appointments
       SET 
       isCompleted = 1
       WHERE appointmentId = ${req.body.appointmentId}
+    `);
+
+    // Insert a record into the attendance table
+    const attendanceResult = await sql.query(`
+      INSERT INTO attendance (userId, date, time)
+      VALUES (${userId}, '${date}', '${time}')
     `);
 
     res.status(200).send('Appointment updated successfully');
@@ -111,8 +130,8 @@ exports.completeAppointment = async (req, res) => {
   } finally {
     sql.close();
   }
-
 }
+
 
 
 exports.approveAppointments = async (req, res) => {
