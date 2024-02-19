@@ -1,4 +1,6 @@
 const nodemailer = require('nodemailer');
+const { dbconfig } = require('../dbConnection');
+const sql = require('mssql');
 
 var transport = nodemailer.createTransport({
     host: "sandbox.smtp.mailtrap.io",
@@ -10,8 +12,24 @@ var transport = nodemailer.createTransport({
   });
 
 exports.sendAllEmails = async (emailList, subject, text) => {
-    
+
     try {
+
+        await sql.connect(dbconfig.GYM);
+
+        // Create a new request object
+        const request = new sql.Request();
+
+        const query = `
+        INSERT INTO emailPormos (subject, body)
+        VALUES (@subject, @body)
+      `;
+  
+      // Bind parameters and execute the query
+      const result = await request.input('subject', sql.Text, subject)
+                                   .input('body', sql.Text, text)
+                                   .query(query);
+  
         // Iterate over each email address in the list
         for (let i = 0; i < emailList.length; i++) {
           const email = emailList[i].email;
