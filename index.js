@@ -17,6 +17,7 @@ const appointmentsRoutes = require('./routes/appointmentRoutes');
 const blogRoutes = require('./routes/bloggingRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const promotionRoutes = require('./routes/promotionsRoutes');
+const paymentRoutes = require('./routes/paymentsRoutes');
 
 // Define a route
 app.use('/users', loginRoutes);
@@ -24,6 +25,7 @@ app.use('/appointments', appointmentsRoutes);
 app.use('/blogging', blogRoutes);
 app.use('/attendance', attendanceRoutes);
 app.use('/promotions', promotionRoutes);
+app.use('/payments', paymentRoutes);
 
 // Start the server
 app.listen(port, () => {
