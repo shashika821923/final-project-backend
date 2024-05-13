@@ -43,30 +43,44 @@ exports.insertUser = async (userData) => {
   try {
     await sql.connect(dbconfig.GYM);
 
+    // Check if email already exists
+    const emailCheckQuery = `
+      SELECT COUNT(*) AS emailCount FROM users WHERE CONVERT(VARCHAR, email) = '${userData.email}'`;
+    const emailCheckResult = await sql.query(emailCheckQuery);
+    const emailCount = emailCheckResult.recordset[0].emailCount;
+
+    if (emailCount > 0) {
+      // Email already exists, return a custom status code
+      return { success: false, message: "Email already exists", statusCode: 409 };
+    }
+
     // Hash the password securely (using a recommended library)
     const hashedPassword = await hashPassword(userData.password); // Replace with secure hashing library
 
-    // Use parameterized query to safely insert data
-    const result = await sql.query`
-            INSERT INTO users (firstName, secondName, address, contact, height, weight, email, password, usertype)
-            VALUES (
-                ${userData.firstName},
-                ${userData.lastName},
-                ${userData.address},
-                ${userData.contactNo},
-                ${userData.height},
-                ${userData.weight},
-                ${userData.email},
-                ${hashedPassword},
-                ${3}
-            )
-        `;
-
+    const insertQuery = `
+  INSERT INTO users (firstName, secondName, address, contact, height, weight, email, password, usertype)
+  VALUES (
+    '${userData.firstName}',
+    '${userData.secondName}',
+    '${userData.address}',
+    '${userData.contact}',
+    '${userData.height}',
+    '${userData.weight}',
+    '${userData.email}',
+    '${hashedPassword}',
+    3
+  )
+`;
+  
+  const result = await sql.query(insertQuery);
+  
+  
     if (result.rowsAffected && result.rowsAffected[0] > 0) {
       // Fetch the inserted userId separately
-      const userIdResult = await sql.query`
-                SELECT userId FROM users WHERE CONVERT(nvarchar(max), email) = ${userData.email}
-            `;
+      const userIdQuery = `
+        SELECT userId FROM users WHERE CONVERT(VARCHAR, email) = '${userData.email}'
+      `;
+      const userIdResult = await sql.query(userIdQuery);
 
       if (userIdResult.recordset.length > 0) {
         const userId = userIdResult.recordset[0].userId;
@@ -77,16 +91,19 @@ exports.insertUser = async (userData) => {
         console.error("Error inserting data: Unable to retrieve userId.");
       }
     } else {
-      console.error(
-        "Error inserting data: No records affected by insert operation."
-      );
+      console.error("Error inserting data: No records affected by insert operation.");
     }
 
     await sql.close();
+    return { success: true, message: "Email already exists", statusCode: 200 };
   } catch (error) {
     console.error("Error inserting data:", error.message);
+    throw error;
   }
 };
+
+
+
 
 async function hashPassword(password) {
   const saltRounds = 10; // Number of salt rounds (cost factor)
@@ -99,37 +116,48 @@ async function comparePassword(password, hashedPassword) {
   const match = await bcrypt.compare(password, hashedPassword);
   return match;
 }
-exports.loginUser = async (credentials) => {
+let failedLoginAttempts = {}; // Object to store failed login attempts by IP address
+
+exports.loginUser = async (req, res) => {
   try {
+    const ipAddress = req.ip; // Get the IP address of the client
+
+    // Check if IP address exists in failedLoginAttempts object
+    if (failedLoginAttempts[ipAddress] && failedLoginAttempts[ipAddress] >= 5) {
+      // If more than 5 failed attempts, block further login attempts from this IP
+      return res.status(429).json({ success: false, message: "Too many login attempts. Please try again later." });
+    }
+
     await sql.connect(dbconfig.GYM);
 
     // Query user by email
-    const query =
-      "SELECT * FROM users WHERE CONVERT(VARCHAR(MAX), email) = @email";
+    const query = "SELECT * FROM users WHERE CONVERT(VARCHAR(MAX), email) = @email";
     const pool = await sql.connect(dbconfig.GYM);
 
     const user = await pool
       .request()
-      .input("email", sql.VarChar, credentials.email)
+      .input("email", sql.VarChar, req.body.email)
       .query(query);
 
     if (!user || user.recordset.length === 0) {
       // User not found
-      return { success: false, message: "Invalid email or password." };
+      incrementFailedAttempts(ipAddress); // Increment failed login attempts
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
     // Compare passwords
-    const match = await bcrypt.compare(
-      credentials.password,
-      user.recordset[0].password
-    );
+    const match = await bcrypt.compare(req.body.password, user.recordset[0].password);
 
     if (!match) {
       // Passwords don't match
-      return { success: false, message: "Invalid email or password." };
+      incrementFailedAttempts(ipAddress); // Increment failed login attempts
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
-    // Passwords match, generate JWT token
+    // Passwords match, reset failed attempts counter
+    resetFailedAttempts(ipAddress);
+
+    // Generate JWT token
     const token = jwt.sign(
       {
         userId: user.recordset[0].userId,
@@ -140,13 +168,28 @@ exports.loginUser = async (credentials) => {
       { expiresIn: "1h" }
     );
 
-    return { success: true, token: token };
+    res.status(200).json({ success: true, token: token });
   } catch (error) {
     console.error("Error:", error.message);
-    return { success: false, message: "An error occurred while logging in." };
+    return res.status(500).json({ success: false, message: "An error occurred while logging in." });
   }
 };
 
+// Function to increment failed login attempts for an IP address
+function incrementFailedAttempts(ipAddress) {
+  if (!failedLoginAttempts[ipAddress]) {
+    failedLoginAttempts[ipAddress] = 1;
+  } else {
+    failedLoginAttempts[ipAddress]++;
+  }
+}
+
+// Function to reset failed login attempts for an IP address
+function resetFailedAttempts(ipAddress) {
+  if (failedLoginAttempts[ipAddress]) {
+    delete failedLoginAttempts[ipAddress];
+  }
+}
 exports.getAllUsersList = async () => {
   try {
     await sql.connect(dbconfig.GYM);
@@ -376,5 +419,48 @@ exports.updateMealPlan = async (userId, userData) => {
       return { success: false, message: "An error occurred while updating the meal plan." };
     }
   };
+
+
+  function generateRandomString(length) {
+    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let randomString = '';
   
+    for (let i = 0; i < length; i++) {
+      const randomIndex = Math.floor(Math.random() * charset.length);
+      randomString += charset[randomIndex];
+    }
+  
+    return randomString;
+  }
+  
+  exports.resetPassword = async (userInfo) => {
+    try {
+      // Connect to the database
+      await sql.connect(dbconfig.GYM);
+      const randomString = generateRandomString(8);
+      const hashedPassword = await hashPassword(randomString); // Replace with secure hashing library
+
+      const query = `
+            UPDATE [lords-gym].[dbo].[users]
+            SET
+              
+              [password] = '${hashedPassword}'
+            WHERE CONVERT(VARCHAR, email) = '${userInfo.email}'
+          `;
+  
+      // Execute the SQL query
+      await sql.query(query);
+  
+      // Close the database connection
+      await sql.close();
+  
+      this.updateMealPlan(userInfo.userId, userInfo);
+  
+      // Return success message
+      return { success: true, message: randomString };
+    } catch (error) {
+      console.error("Error updating user:", error.message);
+      throw error;
+    }
+  };
   
