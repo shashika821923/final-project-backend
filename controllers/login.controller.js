@@ -1,4 +1,4 @@
-const { insertUser, loginUser, getAllUsersList, getUserByUserId, updateUserInfo, deleteUser, getNewUsersList, acceptUserRequest } = require("../services/login.service");
+const { insertUser, loginUser, getAllUsersList, getUserByUserId, updateUserInfo, deleteUser, getNewUsersList, acceptUserRequest, updateMealPlan } = require("../services/login.service");
 
 exports.addNewUser = async (req, res) => {
     var result = await insertUser(req.body);
@@ -37,5 +37,10 @@ exports.getNewUsersList = async (req, res) => {
 
 exports.acceptUser = async (req, res) => {
     var result = await acceptUserRequest(req.body.userID);
+    res.send(result);
+};
+
+exports.regenerateMealPlan = async (req, res) => {
+    var result = await updateMealPlan(req.body.userID);
     res.send(result);
 };

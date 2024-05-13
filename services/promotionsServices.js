@@ -51,3 +51,90 @@ exports.sendAllEmails = async (emailList, subject, text) => {
         console.error('Error sending emails:', error);
       }
 } 
+
+
+exports.addUserReview = async (req, res) => {
+  let connection;
+  try {
+      // Connect to the database
+      connection = await sql.connect(dbconfig.GYM);
+
+      // Extract data from the request body
+      const { userId, review } = req.body;
+      const postedDateTime = new Date().toISOString(); // Get current date and time
+
+      // Insert the data into the userReviews table
+      const query = `
+          INSERT INTO [dbo].[userReviews] (userId, review, postedDateTime)
+          VALUES (@userId, @review, @postedDateTime);
+      `;
+      const request = new sql.Request(connection);
+      request.input('userId', sql.Int, userId);
+      request.input('review', sql.VarChar, review);
+      request.input('postedDateTime', sql.DateTime, postedDateTime);
+      await request.query(query);
+
+      // Close connection
+      await connection.close();
+
+      // Return success message
+      return res.status(200).send("Review Saved Successfully");
+  } catch (err) {
+      // Handle errors
+      console.error('Error inserting review:', err);
+      if (connection) {
+          // Close connection if an error occurs
+          await connection.close();
+      }
+      return res.status(500).send("Error saving review");
+  }
+};
+
+
+exports.getAllUserReviews = async (req, res) => {
+  try {
+      // Connect to the database
+      await sql.connect(dbconfig.GYM);
+
+      const query = `
+          SELECT ur.id, ur.userId, ur.review, ur.postedDateTime, 
+                 CONCAT(u.firstName, ' ', u.secondName) AS name
+          FROM [dbo].[userReviews] ur
+          JOIN [dbo].[users] u ON ur.userId = u.userId
+          ORDER BY ur.postedDateTime DESC;`;
+
+      const result = await sql.query(query);
+
+      // Close connection
+      await sql.close();
+
+      // Send the response with the reviews
+      res.status(200).json(result.recordset);
+  } catch (err) {
+      console.error('Error fetching user reviews:', err);
+      res.status(500).send('Error fetching user reviews');
+  }
+};
+
+exports.sendPaymentreminder = async(year, month, emailList) => {
+  try{
+    for (let i = 0; i < emailList.length; i++) {
+      const email = emailList[i];
+      console.log(email)
+      // Create email options
+      const mailOptions = {
+        from: 'shashikasedirisingha@gmail.com', // Sender address
+        to: email, // Recipient address
+        subject: "Kind Payment reminder from Lord's Gym", // Subject line
+        text: `Please settle you payment for ${year} - ${month} before end of this month, Thank you !` // Plain text body
+      };
+
+      // Send email
+      await transport.sendMail(mailOptions);
+      console.log(`Email sent successfully to ${email}`);
+    }
+    return true;
+  } catch (error) {
+    console.error('Error sending emails:', error);
+  }
+}
